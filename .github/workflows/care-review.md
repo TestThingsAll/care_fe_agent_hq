@@ -46,7 +46,7 @@ on:
 # this filter, every one of their comments starts a billed run that reads the whole agent file and
 # then noops. The prompt-level bot rule stays as a second line of defence.
 if: >
-  ${{ github.repository == 'ohcnetwork/care_fe' &&
+  ${{ github.repository == 'yash-learner/care_fe_agent_hq' &&
       (github.event.pull_request == null || github.event.pull_request.draft == false) &&
       (github.event.comment == null || github.event.comment.user.type != 'Bot') &&
       (github.event.issue == null || github.event.issue.pull_request != null) }}
