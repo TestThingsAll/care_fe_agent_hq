@@ -1,0 +1,59 @@
+# Fork-reply bridge, Stage 1 of 3 — CAPTURE.
+#
+# Why this exists: `care-review` reviews fork PRs fine (it triggers on `pull_request_target`, which
+# runs in base-repo context WITH the Copilot credential). A conversation comment (`issue_comment`)
+# also keeps that credential, so `care-review` answers those itself — this bridge does not listen
+# for them. An inline reply fires `pull_request_review_comment`, and GitHub withholds
+# `COPILOT_GITHUB_TOKEN` when the PR head is a fork, so that run dies at activation. This 3-stage
+# bridge carries the trust back: Stage 1 (here) runs powerless and just records what was said;
+# Stage 2 (`workflow_run`, which DOES get secrets) picks the record up and dispatches the reply
+# agent (Stage 3).
+#
+# This stage is deliberately dumb and powerless. It holds NO token (`permissions: {}`) — proving the
+# untrusted fork side needs nothing GitHub withholds — and makes NO fork/own-thread decisions. All
+# filtering that needs a token or an API call (is this actually a fork PR? is it addressed to
+# care-review via @mention or a care-review review thread?) happens in Stage 2, which runs in
+# trusted base context and must skip Stage 3 unless that gate passes. Same division of labour the
+# repo already uses for pr-review-trigger.yml -> pr-automation.yml and the Cloudflare preview bridge.
+name: CARE Reply Bridge — Capture
+
+on:
+  pull_request_review_comment:
+    types: [created]
+
+# Zero permissions: a hostile fork comment can do nothing here. The captured context crosses to
+# Stage 2 as an artifact, never as a token-bearing action.
+permissions: {}
+
+# Cheap trigger-level gate only. Upstream-repo, skip bots (their comments would spin the bridge for
+# nothing — see care-review.md's bot rationale). Fork-detection and "is this addressed to
+# care-review?" are NOT here — they need a token, so Stage 2 owns them and must not dispatch the
+# Copilot agent until that gate passes.
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    if: >-
+      ${{ github.repository == 'yash-learner/care_fe_agent_hq' &&
+          github.event.comment.user.type != 'Bot' }}
+    steps:
+      # Pointers only. Stage 2 re-fetches the comment via the API by id, so the attacker-controlled
+      # body never crosses this boundary and never needs to be logged.
+      - name: Record reply context
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$EVENT_NAME" > event_name.txt
+          printf '%s' "$PR_NUMBER"  > pr_number.txt
+          printf '%s' "$COMMENT_ID" > comment_id.txt
+
+      - name: Upload reply context
+        uses: actions/upload-artifact@v4
+        with:
+          name: fork-reply-context
+          path: |
+            event_name.txt
+            pr_number.txt
+            comment_id.txt
