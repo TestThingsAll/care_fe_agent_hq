@@ -34,6 +34,10 @@ permissions:
 checkout: false
 imports:
   - .github/agents/care-review.agent.md
+# Explicit cap so this is a decision, not the compiler default. A reply is cheaper than a full
+# review, so 5000 is enough for fork-reply traffic and still stops a runaway. care-review uses
+# 25000 because a day of full reviews already costs ~5K.
+max-daily-ai-credits: 5000
 engine:
   id: copilot
   harness:
